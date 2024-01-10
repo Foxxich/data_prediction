@@ -8,11 +8,9 @@ from collections import defaultdict
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
+matplotlib.use('Agg')
 
-matplotlib.use('Agg')  # Dla środowisk bez GUI, lub 'TkAgg' dla środowisk z GUI
 
-
-# Class Definitions
 class VirtualUser:
     def __init__(self, id, susceptibility_to_fake_news):
         self.id = id
@@ -30,7 +28,7 @@ class DynamicVirtualUser(EnhancedVirtualUser):
         super().__init__(id, susceptibility_to_fake_news, interests)
         self.read_articles = []
         self.friends = friends if friends is not None else []
-        self.infection_time = None  # Track when the user shares the news
+        self.infection_time = None
 
     def read_article(self, article_id, current_time):
         print(f"User {self.id} read article {article_id} at time {current_time}")
@@ -43,7 +41,7 @@ class DynamicVirtualUser(EnhancedVirtualUser):
         self.read_article(article_id, current_time)
         for friend_id in self.friends:
             friend = network.nodes[friend_id]['user']
-            if random.random() < 0.7:  # Higher chance for friends to read the posted article
+            if random.random() < 0.7:
                 print(f"Friend {friend_id} of User {self.id} read article {article_id} posted by User {self.id}")
                 friend.read_article(article_id, current_time)
 
@@ -57,6 +55,7 @@ def create_dynamic_virtual_users(num_users, interests):
         user_interests = random.sample(interests, k=random.randint(1, len(interests)))
         dynamic_users.append(DynamicVirtualUser(i, susceptibility, user_interests))
     return dynamic_users
+
 
 def assign_friends_to_users(users, max_friends=5):
     for user in users:
@@ -88,10 +87,11 @@ def simulate_and_export_results(users, network, df, num_days=30):
                 user.read_article(article_id, current_time)
                 results[user.id].append(('read', article_id, day))
                 for friend_id in network[user.id]:
-                        friend = network.nodes[friend_id]['user']
-                        if article_id not in friend.read_articles:
-                            friend.read_article(article_id, current_time + 1)
-                            results[friend_id].append(('received', article_id, day, user.id))
+                    friend = network.nodes[friend_id]['user']
+                    if article_id not in friend.read_articles:
+                        friend.read_article(article_id, current_time + 1)
+                        results[friend_id].append(('received', article_id, day, user.id))
+                        results[friend_id].append(('read', article_id, day, user.id))
 
     # Zapis do CSV
     with open('simulation_results.csv', 'w') as file:
@@ -100,37 +100,69 @@ def simulate_and_export_results(users, network, df, num_days=30):
             for action, article_id, day, *origin in interactions:
                 origin_id = origin[0] if origin else ''
                 file.write(f"{user_id},{action},{article_id},{day},{origin_id}\n")
-
+    total_read = sum(1 for interactions in results.values() for action in interactions if action[0] == 'read')
+    total_received = sum(1 for interactions in results.values() for action in interactions if action[0] == 'received')
+    print(f"Total 'read' actions: {total_read}")
+    print(f"Total 'received' actions: {total_received}")
     return results
 
 
-def plot_simulation_results(results):
+def plot_simulation_results(simulation_results):
     plt.figure(figsize=(10, 6))
     read_counts = defaultdict(int)
     share_counts = defaultdict(int)
 
-    for interactions in results.values():
-        for interaction in interactions:
-            action = interaction[0]
-            article_id = interaction[1]
+    # Przetwarzanie wyników symulacji
+    for user_id, interactions in simulation_results.items():
+        for action, article_id, day, *origin in interactions:
             if action == 'read':
                 read_counts[article_id] += 1
             elif action == 'received':
                 share_counts[article_id] += 1
 
-    # Przygotowanie danych do wykresu
-    articles = list(set(read_counts.keys()).union(share_counts.keys()))
+    # Sort articles by ID for consistent plotting
+    articles = sorted(set(read_counts.keys()).union(share_counts.keys()))
     read_freq = [read_counts[art] for art in articles]
     share_freq = [share_counts[art] for art in articles]
 
+    # Adjust 'share_freq' to never exceed 'read_freq'
+    share_freq = [min(shares, reads) for shares, reads in zip(share_freq, read_freq)]
+
     # Rysowanie wykresu
-    plt.bar(articles, read_freq, label='Read Count')
-    plt.bar(articles, share_freq, bottom=read_freq, label='Share Count', alpha=0.5)
+    plt.bar(articles, read_freq, label='Read Count', color='yellow')
+    plt.bar(articles, share_freq, label='Share Count', color='red', alpha=0.5)
+
     plt.xlabel('Article ID')
     plt.ylabel('Frequency')
-    plt.title('Article Read and Share Frequency')
+    plt.title('New Article Read and Share Frequency')
     plt.legend()
-    plt.savefig('results.jpg')
+    plt.tight_layout()
+    plt.savefig('articles.jpg')
+
+
+def plot_infection_spread(simulation_results):
+    plt.figure(figsize=(10, 6))
+    infection_timeline = defaultdict(int)
+
+    # Przetwarzanie wyników symulacji do stworzenia linii czasu zakażeń
+    for user_id, interactions in simulation_results.items():
+        for action, article_id, day, *origin in interactions:
+            if action in ('read', 'received'):
+                infection_timeline[day] += 1
+
+    # Sortowanie dni, aby zapewnić poprawną kolejność na wykresie
+    days = sorted(infection_timeline.keys())
+    infections = [infection_timeline[day] for day in days]
+
+    # Tworzenie wykresu liniowego pokazującego wzrost liczby zakażeń
+    plt.plot(days, infections, marker='o', linestyle='-', color='red')
+
+    plt.xlabel('Day')
+    plt.ylabel('Cumulative Infections')
+    plt.title('Infection Spread Over Time')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig('infections.jpg')
 
 
 def main():
@@ -153,7 +185,6 @@ def main():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     vectorizer = TfidfVectorizer(stop_words='english')
     X_train_vec = vectorizer.fit_transform(X_train)
-    X_test_vec = vectorizer.transform(X_test)
     model = RandomForestClassifier()
     model.fit(X_train_vec, y_train)
 
@@ -165,6 +196,7 @@ def main():
 
     # Generowanie wykresu
     plot_simulation_results(simulation_results)
+    plot_infection_spread(simulation_results)
 
 
 if __name__ == '__main__':

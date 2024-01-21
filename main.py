@@ -1,13 +1,14 @@
 import random
-
-import matplotlib
-import pandas as pd
-import networkx as nx
 from collections import defaultdict
+import matplotlib
+import networkx as nx
+import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
-from plots import plot_simulation_results, plot_infection_spread
+
+from plots import plot_simulation_results, plot_infection_spread, plot_article_frequency_with_interests, \
+    plot_infection_spread_and_percentage
 
 matplotlib.use('Agg')
 
@@ -75,14 +76,20 @@ def create_social_network(users, average_friends=5):
     return G
 
 
-def simulate_and_export_results(users, network, df, num_days=30):
+def simulate_and_export_results(
+        users,
+        network,
+        df,
+        iteration,
+        share_probability=0.7,
+        is_probability_changed=False,
+        num_days=30):
     results = defaultdict(list)
 
     for day in range(1, num_days + 1):
         current_time = day
         for user in users:
-            share_prob = 0.05 + user.susceptibility_to_fake_news * 0.1
-            if random.random() < share_prob:
+            if random.random() < share_probability:
                 article_id = df.sample(n=1).index[0]
                 user.post_article(article_id, current_time, network)
                 user.read_article(article_id, current_time)
@@ -94,8 +101,10 @@ def simulate_and_export_results(users, network, df, num_days=30):
                         results[friend_id].append(('received', article_id, day, user.id))
                         results[friend_id].append(('read', article_id, day, user.id))
 
-    # Zapis do CSV
-    with open('simulation_results.csv', 'w') as file:
+    filename = str(iteration) + '_simulation_results.csv'
+    if is_probability_changed:
+        filename = str(share_probability) + '_prob_simulation_results.csv'
+    with open(filename, 'w') as file:
         file.write('User,Action,Article,Day,Origin\n')
         for user_id, interactions in results.items():
             for action, article_id, day, *origin in interactions:
@@ -114,32 +123,72 @@ def main():
     df = pd.read_csv(file_path)
     df = df.dropna(subset=['text'])
 
-    # Przykladowe interesy
+    # Dodaj sztucznie kolumnę 'interests'
     interests = ["politics", "technology", "health", "entertainment", "sports"]
+    df['interests'] = [random.choice(interests) for _ in range(len(df))]
 
-    # Dynamiczna liczba uzytkownikow
-    num_dynamic_users = 100
-    dynamic_virtual_users = create_dynamic_virtual_users(num_dynamic_users, interests)
-    assign_friends_to_users(dynamic_virtual_users)
+    # Utwórz kolumnę 'id' jako unikalny identyfikator dla każdego artykułu
+    df['id'] = range(len(df))
 
-    # Machine Learning
-    X = df['text']
-    y = df['label'].apply(lambda x: 1 if x == 'fake' else 0)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    vectorizer = TfidfVectorizer(stop_words='english')
-    X_train_vec = vectorizer.fit_transform(X_train)
-    model = RandomForestClassifier()
-    model.fit(X_train_vec, y_train)
+    # Menu wyboru
+    print("Wybierz opcję:")
+    print("1: Uruchomienie wielu symulacji z różnymi prawdopodobieństwami.")
+    print("2: Uruchomienie jednej symulacji z określonym prawdopodobieństwem.")
+    user_choice = input("Wpisz 1 lub 2 i naciśnij Enter: ")
 
-    # Generowanie sieci z virtualnymi uzytkownikami
-    network = create_social_network(dynamic_virtual_users)
+    if user_choice == '1':
+        num_simulations = 4
+        for i in range(1, num_simulations):
+            # Dynamiczna liczba uzytkownikow
+            num_dynamic_users = 100
+            dynamic_virtual_users = create_dynamic_virtual_users(num_dynamic_users, interests)
+            assign_friends_to_users(dynamic_virtual_users)
 
-    # Symulacja i eksport wyników
-    simulation_results = simulate_and_export_results(dynamic_virtual_users, network, df)
+            # Machine Learning
+            X = df['text']
+            y = df['label'].apply(lambda x: 1 if x == 'fake' else 0)
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            vectorizer = TfidfVectorizer(stop_words='english')
+            X_train_vec = vectorizer.fit_transform(X_train)
+            model = RandomForestClassifier()
+            model.fit(X_train_vec, y_train)
 
-    # Generowanie wykresu
-    plot_simulation_results(simulation_results)
-    plot_infection_spread(simulation_results)
+            # Generowanie sieci z virtualnymi uzytkownikami
+            network = create_social_network(dynamic_virtual_users)
+
+            # Symulacja i eksport wyników
+            simulation_results = simulate_and_export_results(dynamic_virtual_users, network, df, i)
+
+            # Generowanie wykresu
+            plot_simulation_results(simulation_results, df, i)  # Wywołanie funkcji z nowym df
+            plot_article_frequency_with_interests(simulation_results, df, i)
+            plot_infection_spread(simulation_results, i)
+            plot_infection_spread_and_percentage(simulation_results, num_dynamic_users, i)
+    elif user_choice == '2':
+        # Dynamiczna liczba uzytkownikow
+        num_dynamic_users = 100
+        dynamic_virtual_users = create_dynamic_virtual_users(num_dynamic_users, interests)
+        assign_friends_to_users(dynamic_virtual_users)
+
+        # Machine Learning
+        X = df['text']
+        y = df['label'].apply(lambda x: 1 if x == 'fake' else 0)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        vectorizer = TfidfVectorizer(stop_words='english')
+        X_train_vec = vectorizer.fit_transform(X_train)
+        model = RandomForestClassifier()
+        model.fit(X_train_vec, y_train)
+
+        # Generowanie sieci z virtualnymi uzytkownikami
+        network = create_social_network(dynamic_virtual_users)
+
+        share_probabilities = [0.5, 0.6, 0.7, 0.8]
+        for share_probability in share_probabilities:
+            simulate_and_export_results(
+                dynamic_virtual_users, network, df, 1, share_probability, True
+            )
+    else:
+        print("Nieprawidłowy wybór. Uruchom program ponownie.")
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 
-from plots import plot_simulation_results, plot_infection_spread, plot_article_frequency_with_interests, \
+from plots import plot_simulation_results, plot_article_frequency_with_interests, \
     plot_infection_spread_and_percentage
 
 matplotlib.use('Agg')
@@ -162,7 +162,6 @@ def main():
             # Generowanie wykresu
             plot_simulation_results(simulation_results, df, i)  # Wywołanie funkcji z nowym df
             plot_article_frequency_with_interests(simulation_results, df, i)
-            plot_infection_spread(simulation_results, i)
             plot_infection_spread_and_percentage(simulation_results, num_dynamic_users, i)
     elif user_choice == '2':
         # Dynamiczna liczba uzytkownikow

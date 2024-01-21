@@ -2,6 +2,8 @@ import matplotlib
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+import matplotlib.pyplot as plt
+from collections import defaultdict
 matplotlib.use('Agg')
 
 
@@ -100,35 +102,6 @@ def plot_simulation_results(simulation_results, df, iteration):
     fig.write_html(html_file)
 
     return html_file
-
-
-def plot_infection_spread(simulation_results, iteration):
-    plt.figure(figsize=(10, 6))
-    infection_timeline = defaultdict(int)
-
-    # Przetwarzanie wyników symulacji do stworzenia linii czasu zakażeń
-    for user_id, interactions in simulation_results.items():
-        for action, article_id, day, *origin in interactions:
-            if action in ('read', 'received'):
-                infection_timeline[day] += 1
-
-    # Sortowanie dni, aby zapewnić poprawną kolejność na wykresie
-    days = sorted(infection_timeline.keys())
-    infections = [infection_timeline[day] for day in days]
-
-    # Tworzenie wykresu liniowego pokazującego wzrost liczby zakażeń
-    plt.plot(days, infections, marker='o', linestyle='-', color='red')
-
-    plt.xlabel('Day')
-    plt.ylabel('Cumulative Infections')
-    plt.title('Infection Spread Over Time')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(str(iteration) + '_infections.jpg')
-
-
-import matplotlib.pyplot as plt
-from collections import defaultdict
 
 
 def plot_infection_spread_and_percentage(simulation_results, num_users, iteration):

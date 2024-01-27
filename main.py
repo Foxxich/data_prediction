@@ -8,7 +8,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 
 from plots import plot_simulation_results, plot_article_frequency_with_interests, \
-    plot_infection_spread_and_percentage
+    plot_infection_spread_and_percentage, plot_infections
 
 matplotlib.use('Agg')
 
@@ -33,25 +33,26 @@ class DynamicVirtualUser(EnhancedVirtualUser):
         self.infection_time = None
 
     def read_article(self, article_id, current_time):
-        print(f"User {self.id} read article {article_id} at time {current_time}")
-        self.read_articles.append(article_id)
-        if self.infection_time is None:
-            self.infection_time = current_time
+        if article_id not in self.read_articles:
+            print(f"User {self.id} read article {article_id} at time {current_time}")
+            self.read_articles.append(article_id)
+            if self.infection_time is None:
+                self.infection_time = current_time
 
     def post_article(self, article_id, current_time, network):
-        print(f"User {self.id} posted article {article_id} at time {current_time}")
-        self.read_article(article_id, current_time)
-        for friend_id in self.friends:
-            friend = network.nodes[friend_id]['user']
-            if random.random() < 0.7:
-                print(f"Friend {friend_id} of User {self.id} read article {article_id} posted by User {self.id}")
-                friend.read_article(article_id, current_time)
+        if article_id not in self.read_articles:
+            print(f"User {self.id} posted article {article_id} at time {current_time}")
+            self.read_article(article_id, current_time)
+            for friend_id in self.friends:
+                friend = network.nodes[friend_id]['user']
+                if random.random() < 0.7 and article_id not in friend.read_articles:
+                    print(f"Friend {friend_id} of User {self.id} read article {article_id} posted by User {self.id}")
+                    friend.read_article(article_id, current_time)
 
 
 # Function Definitions
 def create_dynamic_virtual_users(num_users, interests):
     dynamic_users = []
-    num_users = min(num_users, 30)
     for i in range(num_users):
         susceptibility = random.uniform(0, 1)
         user_interests = random.sample(interests, k=random.randint(1, len(interests)))
@@ -85,21 +86,23 @@ def simulate_and_export_results(
         is_probability_changed=False,
         num_days=30):
     results = defaultdict(list)
+    infected_users = set()  # Dodajemy zestaw, aby śledzić zainfekowanych użytkowników
 
     for day in range(1, num_days + 1):
         current_time = day
         for user in users:
-            if random.random() < share_probability:
+            if user.id not in infected_users and random.random() < share_probability:
                 article_id = df.sample(n=1).index[0]
                 user.post_article(article_id, current_time, network)
-                user.read_article(article_id, current_time)
                 results[user.id].append(('read', article_id, day))
+                infected_users.add(user.id)  # Oznaczamy użytkownika jako zainfekowanego
                 for friend_id in network[user.id]:
                     friend = network.nodes[friend_id]['user']
                     if article_id not in friend.read_articles:
                         friend.read_article(article_id, current_time + 1)
                         results[friend_id].append(('received', article_id, day, user.id))
                         results[friend_id].append(('read', article_id, day, user.id))
+                        infected_users.add(friend_id)
 
     filename = str(iteration) + '_simulation_results.csv'
     if is_probability_changed:
@@ -160,9 +163,10 @@ def main():
             simulation_results = simulate_and_export_results(dynamic_virtual_users, network, df, i)
 
             # Generowanie wykresu
-            plot_simulation_results(simulation_results, df, i)  # Wywołanie funkcji z nowym df
+            plot_simulation_results(simulation_results, df, i)
             plot_article_frequency_with_interests(simulation_results, df, i)
             plot_infection_spread_and_percentage(simulation_results, num_dynamic_users, i)
+            plot_infections(simulation_results, num_dynamic_users, i)
     elif user_choice == '2':
         # Dynamiczna liczba uzytkownikow
         num_dynamic_users = 100
@@ -181,11 +185,15 @@ def main():
         # Generowanie sieci z virtualnymi uzytkownikami
         network = create_social_network(dynamic_virtual_users)
 
-        share_probabilities = [0.5, 0.6, 0.7, 0.8]
+        share_probabilities = [0.1, 0.3, 0.5, 0.7, 0.9]
         for share_probability in share_probabilities:
-            simulate_and_export_results(
+            simulation_results = simulate_and_export_results(
                 dynamic_virtual_users, network, df, 1, share_probability, True
             )
+            plot_simulation_results(simulation_results, df, share_probability)
+            plot_article_frequency_with_interests(simulation_results, df, share_probability)
+            plot_infection_spread_and_percentage(simulation_results, num_dynamic_users, share_probability)
+            plot_infections(simulation_results, num_dynamic_users, share_probability)
     else:
         print("Nieprawidłowy wybór. Uruchom program ponownie.")
 

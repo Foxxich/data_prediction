@@ -1,9 +1,12 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import plotly.express as px
-from collections import defaultdict
 import pandas as pd
 import plotly.graph_objects as go
+import numpy as np
+from scipy.stats import norm
+from collections import defaultdict
+
 matplotlib.use('Agg')
 
 
@@ -112,39 +115,94 @@ def plot_simulation_results(simulation_results, df, iteration):
 
 
 def plot_infection_spread_and_percentage(simulation_results, num_users, iteration):
-    plt.figure(figsize=(12, 6))
-
-    # Przetwarzanie wyników symulacji do stworzenia linii czasu zakażeń
     infection_timeline = defaultdict(int)
     infected_users = set()
     percentage_infected = []
 
-    for user_id, interactions in simulation_results.items():
-        for action, article_id, day, *origin in interactions:
-            if action in ('read', 'received'):
-                infected_users.add(user_id)
-                infection_timeline[day] += 1
+    max_day = max(max(day for _, _, day, *_ in interactions) for interactions in simulation_results.values())
+    for day in range(1, max_day + 1):
+        daily_infected_count = 0
+        for user_id, interactions in simulation_results.items():
+            if user_id not in infected_users:
+                interactions_today = [interaction for interaction in interactions if interaction[2] == day]
+                if any(action in ('read', 'received') for action, _, _, *_ in interactions_today):
+                    infected_users.add(user_id)
+                    daily_infected_count += 1
+        infection_timeline[day] += daily_infected_count
         percentage_infected.append(len(infected_users) / num_users * 100)
 
-    # Sortowanie dni, aby zapewnić poprawną kolejność na wykresie
     days = sorted(infection_timeline.keys())
     infections = [infection_timeline[day] for day in days]
 
-    # Wykres liczby zakażeń
-    plt.subplot(1, 2, 1)
-    plt.plot(days, infections, marker='o', linestyle='-', color='red')
-    plt.xlabel('Day')
-    plt.ylabel('Number of Infections')
-    plt.title('Daily Infections')
-    plt.grid(True)
+    mu, sigma = np.mean(infections), np.std(infections)
+    if sigma == 0:
+        print("Odchylenie standardowe wynosi zero, nie można wygenerować dystrybuanty i gęstości rozkładu normalnego.")
+        return
 
-    # Wykres procentu populacji, która zachorowała
+    x = np.linspace(mu - 3 * sigma, mu + 3 * sigma, 100)
+    p = norm.cdf(x, mu, sigma)
+    density = norm.pdf(x, mu, sigma)
+
+    plt.figure(figsize=(16, 6))
+    plt.subplot(1, 2, 1)
+    plt.plot(x, p, 'k-', lw=2)
+    plt.title('Dystrybuanta rozkładu normalnego')
+    plt.xlabel('Możliwe wyniki zmiennej (cechy)')
+    plt.ylabel('Wartość dystrybuanty')
     plt.subplot(1, 2, 2)
-    plt.plot(days, percentage_infected[:len(days)], marker='o', linestyle='-', color='blue')
+    plt.plot(x, density, 'k-', lw=2)
+    plt.fill_between(x, density, 0, alpha=0.1)
+    plt.title('Gęstość rozkładu normalnego')
+    plt.xlabel('Możliwe wyniki zmiennej (cechy)')
+    plt.ylabel('Gęstość')
+
+    plt.tight_layout()
+    plt.savefig(f"{iteration}_infection_spread_and_percentage.png")
+    plt.close()
+
+
+def plot_infections(simulation_results, num_users, iteration):
+    plt.figure(figsize=(12, 6))
+
+    # Przetwarzanie wyników symulacji
+    new_infections_daily = defaultdict(int)
+    infected_users = set()
+
+    # Ustalanie zakresu dni
+    max_day = max(max(day for _, _, day, *_ in interactions) for interactions in simulation_results.values())
+    for day in range(1, max_day + 1):
+        daily_infected_count = 0
+        for user_id, interactions in simulation_results.items():
+            if user_id not in infected_users:
+                interactions_today = [interaction for interaction in interactions if interaction[2] == day]
+                if any(action in ('read', 'received') for action, _, _, *_ in interactions_today):
+                    infected_users.add(user_id)
+                    daily_infected_count += 1
+        new_infections_daily[day] = daily_infected_count
+
+    days = sorted(new_infections_daily.keys())
+    new_infections = [new_infections_daily[day] for day in days]
+
+    # Wykres liczby nowych zakażeń każdego dnia
+    plt.subplot(1, 2, 1)
+    plt.bar(days, new_infections, color='red')
+    plt.xlabel('Day')
+    plt.ylabel('Number of New Infections')
+    plt.title('Daily New Infections')
+    plt.grid(True)
+    plt.xticks(days)  # Ustawienie etykiet osi X jako liczby całkowite
+
+    # Wykres kumulatywnego procentu populacji, która zachorowała
+    cumulative_infections = np.cumsum(new_infections)
+    percentage_infected = [count / num_users * 100 for count in cumulative_infections]
+
+    plt.subplot(1, 2, 2)
+    plt.plot(days, percentage_infected, marker='o', linestyle='-', color='blue')
     plt.xlabel('Day')
     plt.ylabel('Percentage of Population Infected')
     plt.title('Cumulative Percentage of Population Infected')
     plt.grid(True)
+    plt.xticks(days)  # Ustawienie etykiet osi X jako liczby całkowite
 
     plt.tight_layout()
-    plt.savefig(str(iteration) + '_infections_and_percentage.jpg')
+    plt.savefig(f"{iteration}_plot_infections.jpg")

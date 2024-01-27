@@ -1,9 +1,9 @@
 import matplotlib
-import plotly.express as px
-import plotly.graph_objects as go
-import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.express as px
 from collections import defaultdict
+import pandas as pd
+import plotly.graph_objects as go
 matplotlib.use('Agg')
 
 
@@ -11,12 +11,18 @@ def plot_article_frequency_with_interests(simulation_results, df, iteration):
     # Przetwarzanie wyników symulacji
     read_counts = defaultdict(int)
     share_counts = defaultdict(int)
+
+    # Zliczanie akcji 'read' i 'received' zgodnie z logiką podaną przez użytkownika
     for user_id, interactions in simulation_results.items():
         for action, article_id, day, *origin in interactions:
             if action == 'read':
                 read_counts[article_id] += 1
             elif action == 'received':
                 share_counts[article_id] += 1
+
+    # Dodanie wydruków do weryfikacji poprawności zliczania
+    print(f"Corrected Total 'read' actions: {sum(read_counts.values())}")
+    print(f"Corrected Total 'received' actions: {sum(share_counts.values())}")
 
     # Tworzenie DataFrame
     articles_data = []
@@ -55,8 +61,9 @@ def plot_article_frequency_with_interests(simulation_results, df, iteration):
         )
     ])
 
+    # Zmiana barmode na 'group' zamiast 'stack'
     fig.update_layout(
-        barmode='stack',
+        barmode='group',  # Zmienione z 'stack' na 'group'
         title='Article Read and Share Frequency with Interests',
         xaxis_title='Article ID',
         yaxis_title='Frequency',
